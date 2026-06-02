@@ -30,21 +30,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-binaries-
 
-      - name: Install Tools
-        run: |
-          export PATH=$PATH:$(go env GOPATH)/bin
-          
-          if ! command -v subfinder &> /dev/null; then
-            echo "Installing Subfinder..."
-            go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-          fi
-          
-          if ! command -v nuclei &> /dev/null; then
-            echo "Installing Nuclei..."
-            go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
-          fi
           
           echo "✅ Tools ready"
+          
       - name: Extract, Scan, and Loop
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
