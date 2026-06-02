@@ -29,9 +29,6 @@ jobs:
           key: ${{ runner.os }}-go-binaries-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-binaries-
-
-          
-          echo "✅ Tools ready"
           
       - name: Extract, Scan, and Loop
         env:
