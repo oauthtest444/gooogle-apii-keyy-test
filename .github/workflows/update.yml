@@ -45,7 +45,6 @@ jobs:
           fi
           
           echo "✅ Tools ready"
-
       - name: Extract, Scan, and Loop
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
@@ -81,7 +80,7 @@ jobs:
             chmod +x script.sh || true
 
             echo "Running custom script.sh..."
-            ./script.sh || true
+            ./script.sh -f q-urls.txt || true
 
           curl -s -H "Content-Type: application/json" \
             -X POST \
