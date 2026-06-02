@@ -1,0 +1,54 @@
+id: google-api-key-validator
+
+info:
+  name: Google Generative Language API Key Extractor + Validator
+  author: custom
+  severity: info
+  description: Extracts Google API keys from JS files and validates them against the models endpoint
+  tags: google,api-key,exposure
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+
+    matchers-condition: and
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - 'AIza[0-9A-Za-z_-]{35}'
+
+    extractors:
+      - type: regex
+        name: google_api_key
+        part: body
+        group: 0
+        internal: true
+        regex:
+          - 'AIza[0-9A-Za-z_-]{35}'
+
+  # Second request: Validate the extracted key
+  - method: GET
+    path:
+      - "https://generativelanguage.googleapis.com/v1beta/models?key={{google_api_key}}"
+
+    matchers:
+      - type: word
+        part: body
+        words:
+          - '"displayName":'
+        condition: and
+
+    extractors:
+      - type: regex
+        name: key
+        part: body
+        group: 0
+        regex:
+          - 'AIza[0-9A-Za-z_-]{35}'
+
+      - type: dsl
+        name: source
+        dsl:
+          - '"Source: " + BaseURL'
