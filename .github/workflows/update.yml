@@ -1,0 +1,210 @@
+name: Nuclei CVE 24/7 Automation
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  nuclei-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.MY_PAT_TOKEN }}
+
+      - name: Setup Go with Cache
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Cache Go Binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin
+          key: ${{ runner.os }}-go-binaries-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-binaries-
+
+      - name: Install Tools
+        run: |
+          export PATH=$PATH:$(go env GOPATH)/bin
+
+          if ! command -v subfinder &> /dev/null; then
+            echo "Installing Subfinder..."
+            go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          fi
+
+          if ! command -v nuclei &> /dev/null; then
+            echo "Installing Nuclei..."
+            go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
+          fi
+
+
+          echo "✅ Tools ready"
+
+      - name: Extract, Scan, and Loop
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          export PATH=$PATH:$(go env GOPATH)/bin
+
+          if [ ! -s data/targets.list ]; then
+            echo "No domains left to scan!"
+            exit 0
+          fi
+
+          RAW_DOMAIN=$(head -n 1 data/targets.list)
+          TARGET_DOMAIN=$(echo "$RAW_DOMAIN" | tr -d '\r' | xargs)
+
+          # Remove first domain immediately
+          sed -i '1d' data/targets.list
+
+          if [ -z "$TARGET_DOMAIN" ]; then
+            echo "Domain empty."
+            exit 0
+          fi
+
+          echo "=================================="
+          echo "Scanning: $TARGET_DOMAIN"
+          echo "=================================="
+
+          curl -s \
+            -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"content\":\"🚀 Starting Scan: ${TARGET_DOMAIN}\"}" \
+            "$DISCORD_WEBHOOK" || true
+
+          echo "Running Subfinder..."
+
+           set +e
+
+             timeout 300 \
+              subfinder \
+               -d "$TARGET_DOMAIN" \
+                -silent \
+                  -max-time 5 \
+                    > subdomains.txt 2>/dev/null
+
+                  SUBFINDER_EXIT=$?
+
+                              set -e
+
+                          echo "Subfinder exit code: $SUBFINDER_EXIT"
+
+          if [ "$SUBFINDER_EXIT" != "0" ]; then
+
+            echo "Subfinder timeout."
+
+            curl -s \
+              -H "Content-Type: application/json" \
+              -X POST \
+              -d "{\"content\":\"❌ Subfinder timeout after 5 minutes: ${TARGET_DOMAIN}\"}" \
+              "$DISCORD_WEBHOOK" || true
+
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+            git add data/targets.list
+
+                git commit -m "Skip failed domain $TARGET_DOMAIN" || true
+                 git push origin main || true
+
+                       exit 0
+          fi
+
+          if [ ! -s subdomains.txt ]; then
+
+            echo "No subdomains found."
+
+            curl -s \
+              -H "Content-Type: application/json" \
+              -X POST \
+              -d "{\"content\":\"❌ No subdomains found for ${TARGET_DOMAIN}\"}" \
+              "$DISCORD_WEBHOOK" || true
+
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+            git add data/targets.list
+
+            if ! git diff --cached --quiet; then
+              git commit -m "Skipped empty domain $TARGET_DOMAIN"
+              git push origin main
+            fi
+
+            exit 0
+          fi
+
+          echo "Found $(wc -l < subdomains.txt) subdomains"
+
+                echo "Preparing targets..."
+
+                sed 's/^/https:\/\//' subdomains.txt | sort -u > httpx-subs.txt
+
+                        if  [ ! -s httpx-subs.txt ]; then
+
+                        echo "No live hosts found."
+
+                     curl -s \
+                    -H "Content-Type: application/json" \
+                         -X POST \
+                         -d "{\"content\":\"❌ No live hosts found for ${TARGET_DOMAIN}\"}" \
+                        "$DISCORD_WEBHOOK" || true
+
+                    git config --global user.name "github-actions[bot]"
+                     git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+                       git add data/targets.list
+
+                          git commit -m "No live hosts $TARGET_DOMAIN" || true
+                          git push origin main || true
+
+                            exit 0
+                               fi
+
+                      echo "Targets for nuclei: $(wc -l < httpx-subs.txt)"
+
+                      echo "Starting nuclei scan..."
+
+                         nuclei \
+                       -l httpx-subs.txt \
+                     -t rules/ \
+              -o nuclei-results.txt || true
+
+                 if [ -s nuclei-results.txt ]; then
+
+                       while IFS= read -r line; do
+
+                   [ -z "$line" ] && continue
+
+                              curl -s \
+                      -H "Content-Type: application/json" \
+                    -X POST \
+             -d "{\"content\":\"⚠️ Nuclei Finding\n\`\`\`\n${line}\n\`\`\`\"}" \
+               "$DISCORD_WEBHOOK" || true
+
+                  done < nuclei-results.txt
+
+                        fi
+
+                     curl -s \
+                  -H "Content-Type: application/json" \
+                   -X POST \
+                       -d "{\"content\":\"✅ Completed Scan: ${TARGET_DOMAIN}\"}" \
+                          "$DISCORD_WEBHOOK" || true
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add data/targets.list
+
+          if ! git diff --cached --quiet; then
+            git commit -m "Completed scan for $TARGET_DOMAIN"
+            git push origin main
+            echo "Pushed updates."
+          fi
