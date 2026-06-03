@@ -75,7 +75,7 @@ jobs:
 
           # === Fetch Wayback Machine JS URLs ===
           echo "Fetching historical JS files from Wayback Machine..."
-          wget -qO urls.txt "https://web.archive.org/cdx/search/cdx?url=*.${TARGET_DOMAIN}&matchType=domain&fl=original&collapse=urlkey&output=text&filter=statuscode:200" || true
+          wget -qO urls.txt "https://web.archive.org/cdx/search/cdx?url=${TARGET_DOMAIN}&matchType=domain&fl=original&collapse=urlkey&output=text&filter=statuscode:200" || true
 
           grep -E -i '\.js(\?|$)' urls.txt > q-urls.txt || true
 
