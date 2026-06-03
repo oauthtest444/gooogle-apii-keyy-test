@@ -16,67 +16,78 @@ jobs:
         with:
           token: ${{ secrets.MY_PAT_TOKEN }}
 
-      - name: Setup Go with Cache
+      - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-          cache: true
 
-      - name: Cache Go Binaries
-        uses: actions/cache@v4
-        with:
-          path: ~/go/bin
-          key: ${{ runner.os }}-go-binaries-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-binaries-
-          
-      - name: Extract, Scan, and Loop
+      - name: Install Nuclei
+        run: |
+          go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
+          echo "✅ Nuclei installed"
+
+      - name: Wayback JS Scan
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-           export PATH=$PATH:$(go env GOPATH)/bin
+          export PATH=$PATH:$(go env GOPATH)/bin
 
-           if [ ! -s data/targets.list ]; then
-               echo "No domains left to scan!"
-             exit 0
-               fi
+          if [ ! -s data/targets.list ]; then
+            echo "No domains left to scan!"
+            exit 0
+          fi
 
-                     RAW_DOMAIN=$(head -n 1 data/targets.list)
-                TARGET_DOMAIN=$(echo "$RAW_DOMAIN" | tr -d '\r' | xargs)
+          RAW_DOMAIN=$(head -n 1 data/targets.list)
+          TARGET_DOMAIN=$(echo "$RAW_DOMAIN" | tr -d '\r' | xargs)
 
-                  sed -i '1d' data/targets.list
+          # Remove processed domain
+          sed -i '1d' data/targets.list
 
-                if [ -z "$TARGET_DOMAIN" ]; then
-                   echo "Domain empty."
-                exit 0
-                 fi
+          if [ -z "$TARGET_DOMAIN" ]; then
+            echo "Empty domain, skipping..."
+            exit 0
+          fi
 
-              echo "Fetching historical JS files from Wayback Machine..."
-                   wget -qO urls.txt "https://web.archive.org/cdx/search/cdx?url=${TARGET_DOMAIN}&matchType=domain&fl=original&collapse=urlkey&output=text&filter=statuscode:200" || true
+          echo "=================================="
+          echo "Scanning: $TARGET_DOMAIN"
+          echo "=================================="
 
-             grep -E -i '\.js(\?|$)' urls.txt > q-urls.txt || true
+          curl -s -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"content\":\"🚀 Starting Wayback JS Scan: ${TARGET_DOMAIN}\"}" \
+            "$DISCORD_WEBHOOK" || true
 
-               if [ -s q-urls.txt ]; then
-             echo "Found $(wc -l < q-urls.txt) JavaScript files from archive"
+          # === Fetch Wayback Machine JS URLs ===
+          echo "Fetching historical JS files from Wayback Machine..."
+          wget -qO urls.txt "https://web.archive.org/cdx/search/cdx?url=*.${TARGET_DOMAIN}&matchType=domain&fl=original&collapse=urlkey&output=text&filter=statuscode:200" || true
 
-                 chmod +x script.sh || true
+          grep -E -i '\.js(\?|$)' urls.txt > q-urls.txt || true
 
-                 echo "Running custom script.sh..."
-                   ./script.sh -f q-urls.txt || true
-                fi
+          if [ -s q-urls.txt ]; then
+            echo "Found $(wc -l < q-urls.txt) JavaScript files from archive"
 
-              curl -s -H "Content-Type: application/json" \
-               -X POST \
-                   -d "{\"content\":\"✅ Completed Scan: ${TARGET_DOMAIN}\"}" \
-                  "$DISCORD_WEBHOOK" || true
+            chmod +x script.sh || true
 
-                  git config --global user.name "github-actions[bot]"
-                git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            echo "Running script.sh..."
+            ./script.sh -f q-urls.txt || true
 
-                      git add data/targets.list
+          else
+            echo "No JavaScript files found in Wayback archive for ${TARGET_DOMAIN}"
+          fi
 
-                if ! git diff --cached --quiet; then
-                 git commit -m "Completed scan for $TARGET_DOMAIN"
-                  git push origin main
-                echo "Pushed updates."
-                 fi
+          # Final notification
+          curl -s -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"content\":\"✅ Completed Scan: ${TARGET_DOMAIN}\"}" \
+            "$DISCORD_WEBHOOK" || true
+
+          # Commit and push progress
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/targets.list
+
+          if ! git diff --cached --quiet; then
+            git commit -m "Completed Wayback JS scan for $TARGET_DOMAIN"
+            git push origin main
+            echo "✅ Progress saved"
+          fi
