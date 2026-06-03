@@ -20,11 +20,27 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
+          cache: true
 
-      - name: Install Nuclei
+      - name: Cache Nuclei Binary
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/nuclei
+          key: ${{ runner.os }}-nuclei-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-nuclei-
+
+      - name: Install Nuclei (only if not cached)
         run: |
-          go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
-          echo "✅ Nuclei installed"
+          export PATH=$PATH:$(go env GOPATH)/bin
+          
+          if ! command -v nuclei &> /dev/null; then
+            echo "Nuclei not found in cache. Installing..."
+            go install -v github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
+            echo "✅ Nuclei installed successfully"
+          else
+            echo "✅ Nuclei already available from cache"
+          fi
 
       - name: Wayback JS Scan
         env:
@@ -69,8 +85,7 @@ jobs:
             chmod +x script.sh || true
 
             echo "Running script.sh..."
-            ./script.sh -f q-urls.txt || true
-
+            ./script.sh || true
           else
             echo "No JavaScript files found in Wayback archive for ${TARGET_DOMAIN}"
           fi
