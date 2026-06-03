@@ -85,7 +85,7 @@ jobs:
             chmod +x script.sh || true
 
             echo "Running script.sh..."
-            ./script.sh || true
+            ./script.sh -f q-urls.txt || true
           else
             echo "No JavaScript files found in Wayback archive for ${TARGET_DOMAIN}"
           fi
