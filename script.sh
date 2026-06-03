@@ -51,7 +51,6 @@ echo -e "${GREEN}[+] Running Nuclei scan...${NC}"
 nuclei -l "$INPUT_FILE" \
        -t "$TEMPLATE" \
        -o results.txt \
-       -silent \
        -ni \
        -c 40 \
        -retries 2
