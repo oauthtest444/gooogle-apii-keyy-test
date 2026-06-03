@@ -34,49 +34,49 @@ jobs:
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-  export PATH=$PATH:$(go env GOPATH)/bin
+           export PATH=$PATH:$(go env GOPATH)/bin
 
-  if [ ! -s data/targets.list ]; then
-    echo "No domains left to scan!"
-    exit 0
-  fi
+           if [ ! -s data/targets.list ]; then
+               echo "No domains left to scan!"
+             exit 0
+               fi
 
-  RAW_DOMAIN=$(head -n 1 data/targets.list)
-  TARGET_DOMAIN=$(echo "$RAW_DOMAIN" | tr -d '\r' | xargs)
+                     RAW_DOMAIN=$(head -n 1 data/targets.list)
+                TARGET_DOMAIN=$(echo "$RAW_DOMAIN" | tr -d '\r' | xargs)
 
-  sed -i '1d' data/targets.list
+                  sed -i '1d' data/targets.list
 
-  if [ -z "$TARGET_DOMAIN" ]; then
-    echo "Domain empty."
-    exit 0
-  fi
+                if [ -z "$TARGET_DOMAIN" ]; then
+                   echo "Domain empty."
+                exit 0
+                 fi
 
-  echo "Fetching historical JS files from Wayback Machine..."
-  wget -qO urls.txt "https://web.archive.org/cdx/search/cdx?url=${TARGET_DOMAIN}&matchType=domain&fl=original&collapse=urlkey&output=text&filter=statuscode:200" || true
+              echo "Fetching historical JS files from Wayback Machine..."
+                   wget -qO urls.txt "https://web.archive.org/cdx/search/cdx?url=${TARGET_DOMAIN}&matchType=domain&fl=original&collapse=urlkey&output=text&filter=statuscode:200" || true
 
-  grep -E -i '\.js(\?|$)' urls.txt > q-urls.txt || true
+             grep -E -i '\.js(\?|$)' urls.txt > q-urls.txt || true
 
-  if [ -s q-urls.txt ]; then
-    echo "Found $(wc -l < q-urls.txt) JavaScript files from archive"
+               if [ -s q-urls.txt ]; then
+             echo "Found $(wc -l < q-urls.txt) JavaScript files from archive"
 
-    chmod +x script.sh || true
+                 chmod +x script.sh || true
 
-    echo "Running custom script.sh..."
-    ./script.sh -f q-urls.txt || true
-  fi
+                 echo "Running custom script.sh..."
+                   ./script.sh -f q-urls.txt || true
+                fi
 
-  curl -s -H "Content-Type: application/json" \
-    -X POST \
-    -d "{\"content\":\"✅ Completed Scan: ${TARGET_DOMAIN}\"}" \
-    "$DISCORD_WEBHOOK" || true
+              curl -s -H "Content-Type: application/json" \
+               -X POST \
+                   -d "{\"content\":\"✅ Completed Scan: ${TARGET_DOMAIN}\"}" \
+                  "$DISCORD_WEBHOOK" || true
 
-  git config --global user.name "github-actions[bot]"
-  git config --global user.email "github-actions[bot]@users.noreply.github.com"
+                  git config --global user.name "github-actions[bot]"
+                git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-  git add data/targets.list
+                      git add data/targets.list
 
-  if ! git diff --cached --quiet; then
-    git commit -m "Completed scan for $TARGET_DOMAIN"
-    git push origin main
-    echo "Pushed updates."
-  fi
+                if ! git diff --cached --quiet; then
+                 git commit -m "Completed scan for $TARGET_DOMAIN"
+                  git push origin main
+                echo "Pushed updates."
+                 fi
